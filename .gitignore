@@ -41,3 +41,14 @@
 *.dwo
 
 agent.md
+
+# Secrets / local env — never commit
+.env
+.env.*
+!.env.example
+
+# Go build output
+/web/tasker-web
+*.test
+
+CONTEXT.md

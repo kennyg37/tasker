@@ -1,5 +1,6 @@
-// Command tasker-web starts the HTTP server. This is the wiring layer: build
-// dependencies, register routes, listen. Keep business logic out of here.
+// Command tasker-web starts the HTTP server. Wiring only: load config, build
+// the Fiber app, register the health route, listen. Business logic lives in the
+// internal packages.
 package main
 
 import (
@@ -8,11 +9,26 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 
-	"github.com/kennyg37/tasker/web/internal/api"
-	"github.com/kennyg37/tasker/web/internal/store"
+	"github.com/kennyg37/tasker/web/internal/config"
+	"github.com/kennyg37/tasker/web/internal/db"
 )
 
 func main() {
+	cfg := config.Load()
+
+	if cfg.DatabaseURL == "" {
+		log.Fatal("DATABASE_URL is not set")
+	}
+
+	gdb, err := db.Open(cfg.DatabaseURL)
+	if err != nil {
+		log.Fatalf("connect database: %v", err)
+	}
+	if err := db.Migrate(gdb); err != nil {
+		log.Fatalf("migrate: %v", err)
+	}
+	log.Println("database connected and migrated")
+
 	app := fiber.New(fiber.Config{AppName: "tasker-web"})
 	app.Use(logger.New())
 
@@ -21,8 +37,6 @@ func main() {
 		return c.JSON(fiber.Map{"status": "ok"})
 	})
 
-	s := store.New()
-	api.New(s).Register(app)
-
-	log.Fatal(app.Listen(":3000"))
+	log.Printf("tasker-web listening on :%s", cfg.Port)
+	log.Fatal(app.Listen(":" + cfg.Port))
 }

@@ -1,23 +1,33 @@
-// Package task defines the core domain model, mirroring the C++ Task class.
+// Package task defines the tasks table — the single source of truth for
+// reminders. Fields are declared explicitly; gorm.Model is intentionally NOT
+// embedded, because its soft-delete DeletedAt column would conflict with the
+// explicit is_done column.
 package task
 
-// Status mirrors the TaskStatus enum from include/Task.h.
-type Status string
+import "time"
+
+// Origin records where a task was captured from.
+type Origin string
 
 const (
-	StatusDone      Status = "done"
-	StatusPostponed Status = "postponed"
-	StatusPending   Status = "pending"
-	StatusOther     Status = "other"
+	OriginPC    Origin = "pc"
+	OriginPhone Origin = "phone"
 )
 
-// Task is the web equivalent of the C++ Task. The optional RemindAt field is
-// new: the CLI tracked only a date, but reminders need a concrete time.
+// Task mirrors the schema in CONTEXT.md. All datetimes are timestamptz, stored
+// in UTC; local time is converted to UTC at the capture layer before saving.
 type Task struct {
-	ID          int        `json:"id"`
-	Date        string     `json:"date"`
-	Number      int        `json:"number"`
-	Description string     `json:"description"`
-	Status      Status     `json:"status"`
-	RemindAt    *string    `json:"remind_at,omitempty"` // RFC3339; nil means no reminder
+	ID             uint       `gorm:"primaryKey" json:"id"`
+	SourceKey      string     `gorm:"uniqueIndex;not null" json:"source_key"`
+	Content        string     `gorm:"not null" json:"content"`
+	Origin         Origin     `gorm:"not null" json:"origin"`
+	DateAdded      time.Time  `gorm:"type:timestamptz;not null;default:now()" json:"date_added"`
+	DueAt          *time.Time `gorm:"type:timestamptz" json:"due_at,omitempty"`
+	ReminderAt     *time.Time `gorm:"type:timestamptz" json:"reminder_at,omitempty"`
+	ReminderBefore *string    `gorm:"type:interval" json:"reminder_before,omitempty"`
+	ReminderSent   bool       `gorm:"not null;default:false" json:"reminder_sent"`
+	IsDone         bool       `gorm:"not null;default:false" json:"is_done"`
+	UpdatedAt      time.Time  `gorm:"type:timestamptz;not null;default:now()" json:"updated_at"`
 }
+
+func (Task) TableName() string { return "tasks" }
