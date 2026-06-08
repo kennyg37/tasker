@@ -109,6 +109,28 @@ func TestUpsertPreservesDoneAndSentFlags(t *testing.T) {
 	}
 }
 
+// A batch sync re-applied is idempotent: no duplicate rows.
+func TestUpsertAllIsIdempotent(t *testing.T) {
+	s, tx := newTx(t)
+
+	tasks := []task.Task{
+		{SourceKey: "pc:batch-1", Content: "A", Origin: task.OriginPC},
+		{SourceKey: "pc:batch-2", Content: "B", Origin: task.OriginPC},
+	}
+	if err := s.UpsertAll(tasks); err != nil {
+		t.Fatalf("first batch: %v", err)
+	}
+	if err := s.UpsertAll(tasks); err != nil {
+		t.Fatalf("second batch: %v", err)
+	}
+
+	var count int64
+	tx.Model(&task.Task{}).Where("source_key IN ?", []string{"pc:batch-1", "pc:batch-2"}).Count(&count)
+	if count != 2 {
+		t.Fatalf("row count = %d, want 2 (batch upsert must not duplicate)", count)
+	}
+}
+
 // origin and date_added are set on insert and must survive a re-sync.
 func TestUpsertPreservesOriginAndDateAdded(t *testing.T) {
 	s, tx := newTx(t)

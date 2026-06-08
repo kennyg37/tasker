@@ -25,7 +25,24 @@ func New(db *gorm.DB) *Store {
 // — overwriting them would resurrect completed tasks or re-fire handled
 // reminders. origin and date_added are set once on insert and preserved.
 func (s *Store) Upsert(t *task.Task) error {
-	return s.db.Clauses(clause.OnConflict{
+	return upsert(s.db, t)
+}
+
+// UpsertAll applies a batch of tasks in a single transaction: either every task
+// is upserted, or none are. A re-synced TODO.md must never land half-applied.
+func (s *Store) UpsertAll(tasks []task.Task) error {
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		for i := range tasks {
+			if err := upsert(tx, &tasks[i]); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+func upsert(db *gorm.DB, t *task.Task) error {
+	return db.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "source_key"}},
 		DoUpdates: clause.AssignmentColumns([]string{"content", "due_at", "reminder_at", "updated_at"}),
 	}).Create(t).Error

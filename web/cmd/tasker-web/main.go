@@ -9,8 +9,10 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 
+	"github.com/kennyg37/tasker/web/internal/api"
 	"github.com/kennyg37/tasker/web/internal/config"
 	"github.com/kennyg37/tasker/web/internal/db"
+	"github.com/kennyg37/tasker/web/internal/store"
 )
 
 func main() {
@@ -36,6 +38,8 @@ func main() {
 	app.Get("/health", func(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{"status": "ok"})
 	})
+
+	api.New(store.New(gdb)).Register(app)
 
 	log.Printf("tasker-web listening on :%s", cfg.Port)
 	log.Fatal(app.Listen(":" + cfg.Port))
