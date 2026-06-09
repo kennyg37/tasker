@@ -4,7 +4,10 @@
 package main
 
 import (
+	"context"
+	"fmt"
 	"log"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/logger"
@@ -12,7 +15,10 @@ import (
 	"github.com/kennyg37/tasker/web/internal/api"
 	"github.com/kennyg37/tasker/web/internal/config"
 	"github.com/kennyg37/tasker/web/internal/db"
+	"github.com/kennyg37/tasker/web/internal/scheduler"
 	"github.com/kennyg37/tasker/web/internal/store"
+	"github.com/kennyg37/tasker/web/internal/task"
+	"github.com/kennyg37/tasker/web/internal/telegram"
 )
 
 func main() {
@@ -39,8 +45,53 @@ func main() {
 		return c.JSON(fiber.Map{"status": "ok"})
 	})
 
-	api.New(store.New(gdb)).Register(app)
+	s := store.New(gdb)
+	if cfg.SyncToken == "" {
+		log.Println("WARNING: SYNC_TOKEN not set; /api/sync is UNAUTHENTICATED")
+	}
+	api.New(s, cfg.SyncToken).Register(app)
+
+	ctx := context.Background()
+	send := startDelivery(ctx, cfg, s)
+	go scheduler.New(s, send, 30*time.Second).Run(ctx)
 
 	log.Printf("tasker-web listening on :%s", cfg.Port)
 	log.Fatal(app.Listen(":" + cfg.Port))
+}
+
+// startDelivery wires Telegram outbound delivery and inbound capture when a bot
+// token and chat id are configured, returning the scheduler's send function.
+// Without Telegram it falls back to logging, so the server still runs in dev.
+func startDelivery(ctx context.Context, cfg config.Config, s *store.Store) scheduler.Sender {
+	if cfg.TelegramBotToken == "" || cfg.TelegramChatID == "" {
+		log.Println("TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID not set; reminders log to stdout, no inbound capture")
+		return func(t task.Task) error {
+			log.Printf("REMINDER task %d: %s", t.ID, t.Content)
+			return nil
+		}
+	}
+	tg, err := telegram.New(cfg.TelegramBotToken, cfg.TelegramChatID)
+	if err != nil {
+		log.Fatalf("telegram: %v", err)
+	}
+	log.Println("reminders deliver via Telegram; inbound capture enabled")
+
+	go tg.Listen(ctx, func(messageID int, text string) error {
+		t := phoneTask(messageID, text)
+		if err := s.Upsert(&t); err != nil {
+			return err
+		}
+		return tg.SendText("✓ captured: " + text)
+	})
+	return tg.Send
+}
+
+// phoneTask builds a task captured from a Telegram message. The source_key is
+// the message id, so re-processing the same message never duplicates it.
+func phoneTask(messageID int, text string) task.Task {
+	return task.Task{
+		SourceKey: fmt.Sprintf("phone:%d", messageID),
+		Content:   text,
+		Origin:    task.OriginPhone,
+	}
 }

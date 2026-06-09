@@ -1,0 +1,21 @@
+# Air live-reload config for the tasker-web server (local dev only — unrelated
+# to Docker). Run from this directory with env injected by dotenvx:
+#
+#   cd web && dotenvx run -f ../.env -- air
+#
+# dotenvx injects ../.env into Air, and the rebuilt binary inherits it.
+
+root = "."
+tmp_dir = "tmp"
+
+[build]
+cmd = "go build -o ./tmp/tasker-web ./cmd/tasker-web"
+bin = "./tmp/tasker-web"
+include_ext = ["go"]
+exclude_dir = ["tmp"]
+exclude_regex = ["_test\\.go"]
+delay = 1000
+stop_on_error = true
+
+[misc]
+clean_on_exit = true

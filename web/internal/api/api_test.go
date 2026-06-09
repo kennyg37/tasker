@@ -38,7 +38,7 @@ func newTxApp(t *testing.T) (*fiber.App, *gorm.DB) {
 	t.Cleanup(func() { tx.Rollback() })
 
 	app := fiber.New()
-	New(store.New(tx)).Register(app)
+	New(store.New(tx), "").Register(app)
 	return app, tx
 }
 
@@ -76,5 +76,49 @@ func TestSyncIngestsTasks(t *testing.T) {
 	tx.Model(&task.Task{}).Where("content LIKE ?", marker+"%").Count(&count)
 	if count != 2 {
 		t.Fatalf("rows persisted = %d, want 2", count)
+	}
+}
+
+func TestSyncRequiresTokenWhenConfigured(t *testing.T) {
+	dsn := os.Getenv("DATABASE_URL")
+	if dsn == "" {
+		t.Skip("DATABASE_URL not set; skipping Postgres integration test")
+	}
+	gdb, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	tx := gdb.Begin()
+	t.Cleanup(func() { tx.Rollback() })
+
+	app := fiber.New()
+	New(store.New(tx), "topsecret").Register(app)
+
+	body := "10/06/2026\n1. authed task - pending\n"
+
+	cases := []struct {
+		name   string
+		header string
+		want   int
+	}{
+		{"no token", "", 401},
+		{"wrong token", "Bearer nope", 401},
+		{"correct token", "Bearer topsecret", 200},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest("POST", "/api/sync", strings.NewReader(body))
+			if tc.header != "" {
+				req.Header.Set("Authorization", tc.header)
+			}
+			resp, err := app.Test(req, -1)
+			if err != nil {
+				t.Fatalf("request: %v", err)
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode != tc.want {
+				t.Errorf("status = %d, want %d", resp.StatusCode, tc.want)
+			}
+		})
 	}
 }

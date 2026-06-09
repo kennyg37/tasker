@@ -51,4 +51,9 @@ agent.md
 /web/tasker-web
 *.test
 
+# Air live-reload build dir
+/web/tmp/
+
 CONTEXT.md
+
+summary.md

@@ -109,6 +109,47 @@ func TestUpsertPreservesDoneAndSentFlags(t *testing.T) {
 	}
 }
 
+// DueReminders must include only due, unsent, incomplete tasks with a reminder.
+func TestDueRemindersFiltering(t *testing.T) {
+	s, _ := newTx(t)
+
+	now := time.Date(2026, 6, 10, 12, 0, 0, 0, time.UTC)
+	past := now.Add(-time.Hour)
+	future := now.Add(time.Hour)
+
+	mk := func(key string, remindAt *time.Time, sent, done bool) {
+		if err := s.Upsert(&task.Task{
+			SourceKey: key, Content: key, Origin: task.OriginPC,
+			ReminderAt: remindAt, ReminderSent: sent, IsDone: done,
+		}); err != nil {
+			t.Fatalf("seed %s: %v", key, err)
+		}
+	}
+	mk("pc:due", &past, false, false)      // fires
+	mk("pc:future", &future, false, false) // not yet due
+	mk("pc:sent", &past, true, false)      // already sent
+	mk("pc:done", &past, false, true)      // completed
+	mk("pc:noremind", nil, false, false)   // no reminder
+
+	due, err := s.DueReminders(now)
+	if err != nil {
+		t.Fatalf("DueReminders: %v", err)
+	}
+
+	got := map[string]bool{}
+	for _, d := range due {
+		got[d.SourceKey] = true
+	}
+	if !got["pc:due"] {
+		t.Error("pc:due should be returned")
+	}
+	for _, k := range []string{"pc:future", "pc:sent", "pc:done", "pc:noremind"} {
+		if got[k] {
+			t.Errorf("%s should NOT be returned by DueReminders", k)
+		}
+	}
+}
+
 // A batch sync re-applied is idempotent: no duplicate rows.
 func TestUpsertAllIsIdempotent(t *testing.T) {
 	s, tx := newTx(t)

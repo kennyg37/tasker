@@ -5,6 +5,8 @@
 package store
 
 import (
+	"time"
+
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
@@ -46,4 +48,21 @@ func upsert(db *gorm.DB, t *task.Task) error {
 		Columns:   []clause.Column{{Name: "source_key"}},
 		DoUpdates: clause.AssignmentColumns([]string{"content", "due_at", "reminder_at", "updated_at"}),
 	}).Create(t).Error
+}
+
+// DueReminders returns tasks whose reminder is due and not yet handled. This is
+// the scheduler's firing predicate — it must never include a sent, completed,
+// or reminder-less task.
+func (s *Store) DueReminders(now time.Time) ([]task.Task, error) {
+	var tasks []task.Task
+	err := s.db.
+		Where("reminder_at IS NOT NULL AND reminder_at <= ? AND reminder_sent = false AND is_done = false", now).
+		Find(&tasks).Error
+	return tasks, err
+}
+
+// MarkReminderSent records that a reminder fired, so the scheduler never
+// re-fires it.
+func (s *Store) MarkReminderSent(id uint) error {
+	return s.db.Model(&task.Task{}).Where("id = ?", id).Update("reminder_sent", true).Error
 }
