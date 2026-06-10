@@ -5,7 +5,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"time"
 
@@ -15,6 +14,7 @@ import (
 	"github.com/kennyg37/tasker/web/internal/api"
 	"github.com/kennyg37/tasker/web/internal/config"
 	"github.com/kennyg37/tasker/web/internal/db"
+	"github.com/kennyg37/tasker/web/internal/draft"
 	"github.com/kennyg37/tasker/web/internal/scheduler"
 	"github.com/kennyg37/tasker/web/internal/store"
 	"github.com/kennyg37/tasker/web/internal/task"
@@ -76,22 +76,8 @@ func startDelivery(ctx context.Context, cfg config.Config, s *store.Store) sched
 	}
 	log.Println("reminders deliver via Telegram; inbound capture enabled")
 
-	go tg.Listen(ctx, func(messageID int, text string) error {
-		t := phoneTask(messageID, text)
-		if err := s.Upsert(&t); err != nil {
-			return err
-		}
-		return tg.SendText("✓ captured: " + text)
-	})
+	drafts := draft.New(time.Now, 10*time.Minute)
+	inbound := telegram.NewInbound(tg, drafts, s.Upsert, time.Now)
+	go tg.Listen(ctx, inbound)
 	return tg.Send
-}
-
-// phoneTask builds a task captured from a Telegram message. The source_key is
-// the message id, so re-processing the same message never duplicates it.
-func phoneTask(messageID int, text string) task.Task {
-	return task.Task{
-		SourceKey: fmt.Sprintf("phone:%d", messageID),
-		Content:   text,
-		Origin:    task.OriginPhone,
-	}
 }

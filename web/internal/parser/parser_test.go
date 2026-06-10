@@ -42,8 +42,8 @@ func TestReminderAtIsDefaultHourKigaliInUTC(t *testing.T) {
 	if len(tasks) != 1 {
 		t.Fatalf("got %d tasks, want 1", len(tasks))
 	}
-	// 09:00 Kigali (UTC+3) on 2026-06-10 == 06:00 UTC.
-	want := time.Date(2026, 6, 10, 6, 0, 0, 0, time.UTC)
+	// 09:00 Kigali (CAT, UTC+2) on 2026-06-10 == 07:00 UTC.
+	want := time.Date(2026, 6, 10, 7, 0, 0, 0, time.UTC)
 	got := tasks[0].ReminderAt
 	if got == nil || !got.Equal(want) {
 		t.Fatalf("reminder_at = %v, want %v", got, want)

@@ -18,9 +18,9 @@ import (
 // date header carries no clock time. Change here to retune.
 const defaultReminderHour = 9
 
-// kigali is the capture timezone (UTC+3, no DST). Local dates are interpreted
-// here, then stored in UTC.
-var kigali = time.FixedZone("Africa/Kigali", 3*60*60)
+// kigali is the capture timezone (CAT, UTC+2, no DST). Local dates are
+// interpreted here, then stored in UTC.
+var kigali = time.FixedZone("Africa/Kigali", 2*60*60)
 
 // Parse reads TODO.md content and returns the tasks it contains. Lines before
 // the first date header are ignored, matching the source format.
